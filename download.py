@@ -44,47 +44,45 @@ class DataDownloader:
     }
 
     def __init__(self, url:str="https://ehw.fit.vutbr.cz/izv/", folder:str="data", cache_filename:str="data_{}.pkl.gz"):
-        page = requests.get(url).text
-        soup = BeautifulSoup(page, 'html.parser')
-        self.files = [url + node.get("onclick").replace("download('", "").replace("')", "")
-            for node in soup.find_all("button")
-            if node.get("onclick").endswith(".zip')") and node.get("onclick").startswith(f"download('{folder}/")
-        ]
         self.url = url
+        self.folder = folder
+        self.cache_filename = cache_filename
 
 
     def download_data(self):
+        # Parsování HTML stránky a načtení seznamu souborů ke stažení.
+        page = requests.get(self.url).text
+        soup = BeautifulSoup(page, 'html.parser')
+        files = [ self.url + node.get("onclick").replace("download('", "").replace("')", "")
+            for node in soup.find_all("button")
+            if node.get("onclick").endswith(".zip')") and node.get("onclick").startswith(f"download('{self.folder}/")
+        ]
+        # Cílová složka nemusí existovat, pokus o její vytvoření.
+        try: mkdir(self.folder)
+        except FileExistsError: pass
+
+        # Paralelní stažení všech sourobů.
         pool = Pool(cpu_count())
-        pool.map(self._download_file, self.files)
+        pool.map(self._download_file, files)
         pool.close()
         pool.join()
 
 
     def _download_file(self, file_url:str):
+        # Získání cesty souboru smazáním url.
         file_path = file_url.replace(self.url, "")
+
+        # Nestahovat znovu, pokud soubor existuje.
         if exists(file_path):
             return
 
+        # Proces stažení souboru.
         print(f"Downloading {file_url}...")
-        self._generate_dir_structure(file_path)
-
         with open(file_path, "wb") as file:
             with requests.get(file_url, stream=True) as data:
                 for chunk in data:
                     file.write(chunk)
-
         print(f"Done downloading {file_url}...")
-
-
-    @staticmethod
-    def _generate_dir_structure(file_path:str):
-        """ Creates directories structure specified in the UNIX style full FILE path. """
-        path_part = ""
-        for dir in file_path.split("/")[:-1]:
-            path_part += dir
-            try: mkdir(path_part)
-            except FileExistsError: pass
-            path_part += "/"
 
 
     def parse_region_data(self, region):
