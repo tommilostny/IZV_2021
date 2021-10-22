@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import numpy as np
+import time
 import zipfile
+from multiprocessing import Pool, cpu_count
+from os import mkdir
+from os.path import exists
+
+import numpy as np
 import requests
 from bs4 import BeautifulSoup
 
@@ -38,23 +43,53 @@ class DataDownloader:
         "KVK": "19",
     }
 
-    def __init__(self, url="https://ehw.fit.vutbr.cz/izv/", folder="data", cache_filename="data_{}.pkl.gz"):
-        print(f"Requesting files from {url}...")
+    def __init__(self, url:str="https://ehw.fit.vutbr.cz/izv/", folder:str="data", cache_filename:str="data_{}.pkl.gz"):
         page = requests.get(url).text
-        print("Parsing response...")
         soup = BeautifulSoup(page, 'html.parser')
         self.files = [url + node.get("onclick").replace("download('", "").replace("')", "")
             for node in soup.find_all("button")
             if node.get("onclick").endswith(".zip')") and node.get("onclick").startswith(f"download('{folder}/")
         ]
-        print(f"Done parsing {len(self.files)} files.")
+        self.url = url
+
 
     def download_data(self):
-        for file in self.files:
-            print(file)
+        pool = Pool(cpu_count())
+        pool.map(self._download_file, self.files)
+        pool.close()
+        pool.join()
+
+
+    def _download_file(self, file_url:str):
+        file_path = file_url.replace(self.url, "")
+        if exists(file_path):
+            return
+
+        print(f"Downloading {file_url}...")
+        self._generate_dir_structure(file_path)
+
+        with open(file_path, "wb") as file:
+            with requests.get(file_url, stream=True) as data:
+                for chunk in data:
+                    file.write(chunk)
+
+        print(f"Done downloading {file_url}...")
+
+
+    @staticmethod
+    def _generate_dir_structure(file_path:str):
+        """ Creates directories structure specified in the UNIX style full FILE path. """
+        path_part = ""
+        for dir in file_path.split("/")[:-1]:
+            path_part += dir
+            try: mkdir(path_part)
+            except FileExistsError: pass
+            path_part += "/"
+
 
     def parse_region_data(self, region):
         pass
+
 
     def get_dict(self, regions=None):
         pass
@@ -62,5 +97,9 @@ class DataDownloader:
 
 # TODO vypsat zakladni informace pri spusteni python3 download.py (ne pri importu modulu)
 if __name__ == "__main__":
+    start = time.time()
+
     downloader = DataDownloader()
     downloader.download_data()
+
+    print("--- %s seconds ---" % (time.time() - start))
