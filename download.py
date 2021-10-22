@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import zipfile
+import requests
+from bs4 import BeautifulSoup
 
 # Kromě vestavěných knihoven (os, sys, re, requests …) byste si měli vystačit s: gzip, pickle, csv, zipfile, numpy, matplotlib, BeautifulSoup.
 # Další knihovny je možné použít po schválení opravujícím (např ve fóru WIS).
-
 
 class DataDownloader:
     """ TODO: dokumentacni retezce 
@@ -38,10 +39,19 @@ class DataDownloader:
     }
 
     def __init__(self, url="https://ehw.fit.vutbr.cz/izv/", folder="data", cache_filename="data_{}.pkl.gz"):
-        pass
+        print(f"Requesting files from {url}...")
+        page = requests.get(url).text
+        print("Parsing response...")
+        soup = BeautifulSoup(page, 'html.parser')
+        self.files = [url + node.get("onclick").replace("download('", "").replace("')", "")
+            for node in soup.find_all("button")
+            if node.get("onclick").endswith(".zip')") and node.get("onclick").startswith(f"download('{folder}/")
+        ]
+        print(f"Done parsing {len(self.files)} files.")
 
     def download_data(self):
-        pass
+        for file in self.files:
+            print(file)
 
     def parse_region_data(self, region):
         pass
@@ -51,3 +61,6 @@ class DataDownloader:
 
 
 # TODO vypsat zakladni informace pri spusteni python3 download.py (ne pri importu modulu)
+if __name__ == "__main__":
+    downloader = DataDownloader()
+    downloader.download_data()
