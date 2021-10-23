@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 import time
 import zipfile
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Manager, Pool, cpu_count
 from os import mkdir
 from os.path import exists
+from typing import Dict, List
 
 import numpy as np
 import requests
@@ -53,7 +54,7 @@ class DataDownloader:
         # Parsování HTML stránky a načtení seznamu souborů ke stažení.
         page = requests.get(self.url).text
         soup = BeautifulSoup(page, 'html.parser')
-        files = [ self.url + node.get("onclick").replace("download('", "").replace("')", "")
+        file_urls = [ self.url + node.get("onclick").replace("download('", "").replace("')", "")
             for node in soup.find_all("button")
             if node.get("onclick").endswith(".zip')") and node.get("onclick").startswith(f"download('{self.folder}/")
         ]
@@ -61,9 +62,13 @@ class DataDownloader:
         try: mkdir(self.folder)
         except FileExistsError: pass
 
+        # Seznam stažených souborů.
+        manager = Manager()
+        self.downloaded_zips : List[str] = manager.list()
+
         # Paralelní stažení všech sourobů.
         pool = Pool(cpu_count())
-        pool.map(self._download_file, files)
+        pool.map(self._download_file, file_urls)
         pool.close()
         pool.join()
 
@@ -71,6 +76,7 @@ class DataDownloader:
     def _download_file(self, file_url:str):
         # Získání cesty souboru smazáním url.
         file_path = file_url.replace(self.url, "")
+        self.downloaded_zips.append(file_path)
 
         # Nestahovat znovu, pokud soubor existuje.
         if exists(file_path):
@@ -85,19 +91,30 @@ class DataDownloader:
         print(f"Done downloading {file_url}...")
 
 
-    def parse_region_data(self, region):
-        pass
+    def parse_region_data(self, region:str) -> Dict[str, np.ndarray]:
+        self.download_data()
+        print(self.downloaded_zips)
+        src_file_name = self.regions[region] + ".csv"
+
+        for zip_path in self.downloaded_zips:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                csvs = zf.namelist()
+                print(csvs)
+                print(src_file_name, src_file_name in csvs)
+
+        return {}
 
 
     def get_dict(self, regions=None):
         pass
 
 
+def main():
+    start = time.time()
+    downloader = DataDownloader()
+    jhm_dict = downloader.parse_region_data("JHM")
+    print("--- %s seconds ---" % (time.time() - start))
+
 # TODO vypsat zakladni informace pri spusteni python3 download.py (ne pri importu modulu)
 if __name__ == "__main__":
-    start = time.time()
-
-    downloader = DataDownloader()
-    downloader.download_data()
-
-    print("--- %s seconds ---" % (time.time() - start))
+    main()
