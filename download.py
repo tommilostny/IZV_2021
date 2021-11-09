@@ -29,24 +29,36 @@ class DataDownloader:
                "p34", "p35", "p39", "p44", "p45a", "p47", "p48a", "p49", "p50a", "p50b", "p51", "p52", "p53", "p55a",
                "p57", "p58", "a", "b", "d", "e", "f", "g", "h", "i", "j", "k", "l", "n", "o", "p", "q", "r", "s", "t", "p5a"]
 
-    #TODO: #1 check with CSV file structure for types again.
     header_types = {
-        "p1"           : np.uint64, "p36"  : np.uint8,  "p37"  : np.str0,   "p2a"  : np.str0, 
-        "weekday(p2a)" : np.uint8,  "p2b"  : np.uint16, "p6"   : np.uint8,  "p7"   : np.uint8, 
-        "p8"           : np.uint8,  "p9"   : np.uint8,  "p10"  : np.uint8,  "p11"  : np.uint8, 
-        "p12"          : np.uint16, "p13a" : np.uint8,  "p13b" : np.uint8,  "p13c" : np.uint8,
-        "p14"          : np.uint16, "p15"  : np.uint8,  "p16"  : np.uint8,  "p17"  : np.uint8, 
-        "p18"          : np.uint8,  "p19"  : np.uint8,  "p20"  : np.uint8,  "p21"  : np.uint8, 
-        "p22"          : np.uint8,  "p23"  : np.uint8,  "p24"  : np.uint8,  "p27"  : np.uint8, 
-        "p28"          : np.uint8,  "p34"  : np.uint8,  "p35"  : np.uint8,  "p39"  : np.str0, 
-        "p44"          : np.uint8,  "p45a" : np.str0,   "p47"  : np.str0,   "p48a" : np.str0, 
-        "p49"          : np.str0,   "p50a" : np.str0,   "p50b" : np.str0,   "p51"  : np.str0, 
-        "p52"          : np.str0,   "p53"  : np.uint8,  "p55a" : np.str0,   "p57"  : np.str0, 
-        "p58"          : np.str0,   "a"    : np.str0,   "b"    : np.str0,   "d"    : np.str0,
-        "e"            : np.str0,   "f"    : np.str0,   "g"    : np.str0,   "h"    : np.str0,
-        "i"            : np.str0,   "j"    : np.str0,   "k"    : np.str0,   "l"    : np.str0, 
-        "n"            : np.str0,   "o"    : np.str0,   "p"    : np.str0,   "q"    : np.str0, 
-        "r"            : np.str0,   "s"    : np.str0,   "t"    : np.str0,   "p5a"  : np.uint8
+        #identifikační číslo            #druh pozemní komunikace    #číslo pozermní komunikace  #den, měsíc, rok
+        "p1"           : np.uint64,     "p36"  : np.uint8,          "p37"  : np.str0,           "p2a"  : np.str0,
+        #den v týdnu                    #čas                        #druh nehody                #druh srážky jedoucích vozidel
+        "weekday(p2a)" : np.uint8,      "p2b"  : np.uint16,         "p6"   : np.uint8,          "p7"   : np.uint8,
+        #druh pevné překážky            #charakter nehody           #zavinění nehody            #alkohol u viníka nehody přítomen
+        "p8"           : np.uint8,      "p9"   : np.uint8,          "p10"  : np.uint8,          "p11"  : np.uint8, 
+        #hlavní příčiny nehody          #usmrceno osob              #těžce zraněno osob         #lehce zraněno osob
+        "p12"          : np.uint16,     "p13a" : np.uint8,          "p13b" : np.uint8,          "p13c" : np.uint8,
+        #celková hmotná škoda           #druh povrchu vozovky       #stav povrchu vozovky       #stav komunikace
+        "p14"          : np.uint32,     "p15"  : np.uint8,          "p16"  : np.uint8,          "p17"  : np.uint8,
+        #povětrnostní podmínky          #viditelnost                #rozhledové poměry          #dělení komunikace 
+        "p18"          : np.uint8,      "p19"  : np.uint8,          "p20"  : np.uint8,          "p21"  : np.uint8,
+        #situování nehody               #řízení provozu             #místní úprava přednosti    #specifická místa a objekty v místě nehody
+        "p22"          : np.uint8,      "p23"  : np.uint8,          "p24"  : np.uint8,          "p27"  : np.uint8,
+        #směrové poměry                 #počet zúčastněných vozidel #místo dopravní nehody      #druh křižující komunikace
+        "p28"          : np.uint8,      "p34"  : np.uint8,          "p35"  : np.uint8,          "p39"  : np.str0,
+        #druh vozidla                   #výrobní značka             #výrobní rok                #charakteristika vozidla
+        "p44"          : np.uint8,      "p45a" : np.str0,           "p47"  : np.str0,           "p48a" : np.str0, 
+        #smyk                           #vozidlo po nehodě          #únik hmot                  #způsob vyproštění osob z vozidla
+        "p49"          : np.str0,       "p50a" : np.str0,           "p50b" : np.str0,           "p51"  : np.str0, 
+        #směr jízdy,postavení vozidla   #škoda na vozidle           #kategorie řidiče           #stav řidiče
+        "p52"          : np.str0,       "p53"  : np.uint8,          "p55a" : np.str0,           "p57"  : np.str0,
+        #vnější ovlivnění řidiče
+        "p58"          : np.str0,       "a"    : np.str0,           "b"    : np.str0,           "d"    : np.str0,
+        "e"            : np.str0,       "f"    : np.str0,           "g"    : np.str0,           "h"    : np.str0,
+        "i"            : np.str0,       "j"    : np.str0,           "k"    : np.str0,           "l"    : np.str0, 
+        "n"            : np.str0,       "o"    : np.str0,           "p"    : np.str0,           "q"    : np.str0,
+                                                                                                #lokalita nehody
+        "r"            : np.str0,       "s"    : np.str0,           "t"    : np.str0,           "p5a"  : np.uint8
     }
     #"a",b,d,e,f : np.float64
 
