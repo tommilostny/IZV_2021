@@ -7,7 +7,7 @@ import zipfile
 from multiprocessing import Manager, Pool, cpu_count
 from os import mkdir
 from os.path import exists
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import numpy as np
 import requests
@@ -61,7 +61,6 @@ class DataDownloader:
                                                                                                 #lokalita nehody
         "r"            : np.uint32,     "s"    : np.uint32,         "t"    : np.str0,           "p5a"  : np.uint8
     }
-    #"a",b,d,e,f : np.float64
 
     regions = {
         "PHA": "00", "STC": "01", "JHC": "02", "PLK": "03",
@@ -152,20 +151,27 @@ class DataDownloader:
         for header in self.headers:
             data[header] = np.array(data[header], dtype=self.header_types[header])
 
-            print(header, end=":\t")
-            print(data[header].shape, end=",\t")
-            print(data[header].dtype)
+        data["region"] = np.array([region for _ in range(data["a"].shape[0])], dtype=np.str0)
         return data
 
 
-    def get_dict(self, regions=None):
-        pass
+    def get_dict(self, regions=Union[None, List[str]]) -> Dict[str, np.ndarray]:
+        if regions is None or len(regions) == 0:
+            regions = list(self.regions.keys())
+
+        data = {}
+        for region in regions:
+            region_data = self.parse_region_data(region)
+            for header in region_data.keys():
+                data[header] = np.concatenate((data.get(header, []), region_data[header]))
+        return data
 
 
 def main():
     start = time.time()
     downloader = DataDownloader()
-    jhm_dict = downloader.parse_region_data("JHM")
+    data = downloader.get_dict(regions=["JHC", "JHM", "VYS"])
+    print(data)
     print("--- %s seconds ---" % (time.time() - start))
 
 # TODO vypsat zakladni informace pri spusteni python3 download.py (ne pri importu modulu)
