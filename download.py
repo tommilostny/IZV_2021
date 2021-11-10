@@ -20,8 +20,9 @@ class DataDownloader:
     """ TODO: dokumentacni retezce 
 
     Attributes:
-        headers    Nazvy hlavicek jednotlivych CSV souboru, tyto nazvy nemente!  
-        regions     Dictionary s nazvy kraju : nazev csv souboru
+        headers         Nazvy hlavicek jednotlivych CSV souboru, tyto nazvy nemente!  
+        regions         Dictionary s nazvy kraju : nazev csv souboru
+        header_types    Dictionary s typy hlavicek jednotlivych CSV souboru
     """
 
     headers = ["p1", "p36", "p37", "p2a", "weekday(p2a)", "p2b", "p6", "p7", "p8", "p9", "p10", "p11", "p12", "p13a",
@@ -30,8 +31,8 @@ class DataDownloader:
                "p57", "p58", "a", "b", "d", "e", "f", "g", "h", "i", "j", "k", "l", "n", "o", "p", "q", "r", "s", "t", "p5a"]
 
     header_types = {
-        #identifikační číslo            #druh pozemní komunikace    #číslo pozermní komunikace  #den, měsíc, rok
-        "p1"           : np.uint64,     "p36"  : np.uint8,          "p37"  : np.str0,           "p2a"  : np.str0,
+        #identifikační číslo            #druh pozemní komunikace    #číslo pozemní komunikace   #den, měsíc, rok
+        "p1"           : np.uint64,     "p36"  : np.uint8,          "p37"  : np.float64,        "p2a"  : np.str0,
         #den v týdnu                    #čas                        #druh nehody                #druh srážky jedoucích vozidel
         "weekday(p2a)" : np.uint8,      "p2b"  : np.uint16,         "p6"   : np.uint8,          "p7"   : np.uint8,
         #druh pevné překážky            #charakter nehody           #zavinění nehody            #alkohol u viníka nehody přítomen
@@ -45,20 +46,20 @@ class DataDownloader:
         #situování nehody               #řízení provozu             #místní úprava přednosti    #specifická místa a objekty v místě nehody
         "p22"          : np.uint8,      "p23"  : np.uint8,          "p24"  : np.uint8,          "p27"  : np.uint8,
         #směrové poměry                 #počet zúčastněných vozidel #místo dopravní nehody      #druh křižující komunikace
-        "p28"          : np.uint8,      "p34"  : np.uint8,          "p35"  : np.uint8,          "p39"  : np.str0,
+        "p28"          : np.uint8,      "p34"  : np.uint8,          "p35"  : np.uint8,          "p39"  : np.float64,
         #druh vozidla                   #výrobní značka             #výrobní rok                #charakteristika vozidla
-        "p44"          : np.uint8,      "p45a" : np.str0,           "p47"  : np.str0,           "p48a" : np.str0, 
+        "p44"          : np.uint8,      "p45a" : np.uint16,         "p47"  : np.uint8,          "p48a" : np.uint8, 
         #smyk                           #vozidlo po nehodě          #únik hmot                  #způsob vyproštění osob z vozidla
-        "p49"          : np.str0,       "p50a" : np.str0,           "p50b" : np.str0,           "p51"  : np.str0, 
+        "p49"          : np.uint8,      "p50a" : np.uint8,          "p50b" : np.uint8,          "p51"  : np.uint8, 
         #směr jízdy,postavení vozidla   #škoda na vozidle           #kategorie řidiče           #stav řidiče
-        "p52"          : np.str0,       "p53"  : np.uint8,          "p55a" : np.str0,           "p57"  : np.str0,
+        "p52"          : np.uint8,      "p53"  : np.uint32,         "p55a" : np.uint8,          "p57"  : np.uint8,
         #vnější ovlivnění řidiče
-        "p58"          : np.str0,       "a"    : np.str0,           "b"    : np.str0,           "d"    : np.str0,
-        "e"            : np.str0,       "f"    : np.str0,           "g"    : np.str0,           "h"    : np.str0,
+        "p58"          : np.uint8,      "a"    : np.float64,        "b"    : np.float64,        "d"    : np.float64,
+        "e"            : np.float64,    "f"    : np.float64,        "g"    : np.float64,        "h"    : np.str0,
         "i"            : np.str0,       "j"    : np.str0,           "k"    : np.str0,           "l"    : np.str0, 
-        "n"            : np.str0,       "o"    : np.str0,           "p"    : np.str0,           "q"    : np.str0,
+        "n"            : np.uint32,     "o"    : np.str0,           "p"    : np.str0,           "q"    : np.str0,
                                                                                                 #lokalita nehody
-        "r"            : np.str0,       "s"    : np.str0,           "t"    : np.str0,           "p5a"  : np.uint8
+        "r"            : np.uint32,     "s"    : np.uint32,         "t"    : np.str0,           "p5a"  : np.uint8
     }
     #"a",b,d,e,f : np.float64
 
@@ -119,33 +120,41 @@ class DataDownloader:
     def parse_region_data(self, region:str) -> Dict[str, np.ndarray]:
         self.download_data()
         region_csv_name = self.regions[region] + ".csv"
-        data : Dict[str, np.ndarray] = { header : [] for header in self.headers }
+        data = { header : [] for header in self.headers }
 
         for zip_path in self.downloaded_zips:
             with zipfile.ZipFile(zip_path, "r") as zf:
-                with zf.open(region_csv_name, "r") as csv_file:
+                with zf.open(region_csv_name, "r") as csv_file: #V každém zip souboru, otevřít csv soubor daného kraje
                     reader = csv.reader(codecs.iterdecode(csv_file, "cp1250"), delimiter=';', quotechar='"')
+                    #Načíst jednotlivé řádky souboru
                     for row in reader:
                         row = dict(zip(self.headers, row))
-                        #if row["p47"] == "XX":
-                        #    continue
+                        skip_row = False
+                        #Přeskočit nevalidní řádky
+                        for header in self.headers:
+                            if row[header] in ["", "XX"]:
+                                #Pro float přiřadit NaN
+                                if self.header_types[header] is np.float64:
+                                    row[header] = np.nan
+                                #Pro ostatní typy přeskočit
+                                elif self.header_types[header] is not np.str0:
+                                    skip_row = True
+                                    break
+                        if skip_row:
+                            continue
+                        #Přidat řádek do data
+                        for header in self.headers:
+                            #Úprava dat pro float (',' na '.')
+                            if self.header_types[header] is np.float64 and row[header] is not np.nan:
+                                row[header] = row[header].replace(",", ".")
+                            data[header].append(row[header])
+        #Konverze seznamů s daty na numpy array
+        for header in self.headers:
+            data[header] = np.array(data[header], dtype=self.header_types[header])
 
-                        for key in data.keys():
-                            if self.header_types[key] is np.float64:
-                                row[key] = row[key].replace(",", ".")
-                            data[key].append(row[key])
-
-        for key in data.keys():
-            print(key)
-            data[key] = np.array(data[key], dtype=self.header_types[key])
-
-        #TODO: #2 duplicity
-        #indeces, counts = np.unique(data["p1"], return_counts=1)
-        #print("Indeces: ", indeces)
-        #print("Counts: ", counts)
-
-        print(len(data["p1"]))
-
+            print(header, end=":\t")
+            print(data[header].shape, end=",\t")
+            print(data[header].dtype)
         return data
 
 
