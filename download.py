@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 import codecs
 import csv
+import gzip
+import pickle
 import time
 import zipfile
 from multiprocessing import Manager, Pool, cpu_count
@@ -69,9 +71,25 @@ class DataDownloader:
         "LBK": "18", "KVK": "19",
     }
 
+    @staticmethod
+    def _load_cache(filename:str) -> Union[Dict[str, np.ndarray], None]:
+        if not exists(filename):
+            return None
+
+        with gzip.open(filename, "rb") as file:
+            return pickle.load(file)
+
+
+    @staticmethod
+    def _save_cache(filename:str, cache:Dict[str, np.ndarray]) -> None:
+        with gzip.open(filename, "wb") as file:
+            pickle.dump(cache, file)
+
+
     def __init__(self, url:str="https://ehw.fit.vutbr.cz/izv/", folder:str="data", cache_filename:str="data_{}.pkl.gz"):
         self.url = url
         self.folder = folder
+        self.extracted_data = { region : None for region in self.regions.keys() }
         self.cache_filename = cache_filename
 
 
@@ -161,7 +179,16 @@ class DataDownloader:
 
         data = {}
         for region in regions:
-            region_data = self.parse_region_data(region)
+            if self.extracted_data[region] is None:
+                filename = self.cache_filename.format(region)
+                self.extracted_data[region] = self._load_cache(filename)
+
+                if self.extracted_data[region] is None:
+                    self.extracted_data[region] = self.parse_region_data(region)
+                    self._save_cache(filename, self.extracted_data[region])
+            
+            region_data = self.extracted_data[region]
+            
             for header in region_data.keys():
                 data[header] = np.concatenate((data.get(header, []), region_data[header]))
         return data

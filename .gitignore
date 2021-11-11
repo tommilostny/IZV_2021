@@ -140,3 +140,4 @@ cython_debug/
 # Custom
 data/
 test.ipynb
+*.pkl.gz
