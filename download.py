@@ -7,7 +7,7 @@ import pickle
 import time
 import zipfile
 from multiprocessing import Manager, Pool, cpu_count
-from os import mkdir
+from os import makedirs
 from os.path import exists
 from typing import Dict, List, Union
 
@@ -19,12 +19,10 @@ from bs4 import BeautifulSoup
 # Další knihovny je možné použít po schválení opravujícím (např ve fóru WIS).
 
 class DataDownloader:
-    """ TODO: dokumentacni retezce 
-
-    Attributes:
+    """Attributes:
         headers         Nazvy hlavicek jednotlivych CSV souboru, tyto nazvy nemente!  
+        header_types    Dictionary s numpy typy hlavicek
         regions         Dictionary s nazvy kraju : nazev csv souboru
-        header_types    Dictionary s typy hlavicek jednotlivych CSV souboru
     """
 
     headers = ["p1", "p36", "p37", "p2a", "weekday(p2a)", "p2b", "p6", "p7", "p8", "p9", "p10", "p11", "p12", "p13a",
@@ -34,7 +32,7 @@ class DataDownloader:
 
     header_types = {
         #identifikační číslo            #druh pozemní komunikace    #číslo pozemní komunikace   #den, měsíc, rok
-        "p1"           : np.uint64,     "p36"  : np.uint8,          "p37"  : np.uint32,         "p2a"  : np.str0,
+        "p1"           : np.uint64,     "p36"  : np.uint8,          "p37"  : np.uint32,         "p2a"  : np.unicode_,
         #den v týdnu                    #čas                        #druh nehody                #druh srážky jedoucích vozidel
         "weekday(p2a)" : np.uint8,      "p2b"  : np.uint16,         "p6"   : np.uint8,          "p7"   : np.uint8,
         #druh pevné překážky            #charakter nehody           #zavinění nehody            #alkohol u viníka nehody přítomen
@@ -56,12 +54,12 @@ class DataDownloader:
         #směr jízdy,postavení vozidla   #škoda na vozidle           #kategorie řidiče           #stav řidiče
         "p52"          : np.uint8,      "p53"  : np.uint32,         "p55a" : np.uint8,          "p57"  : np.uint8,
         #vnější ovlivnění řidiče
-        "p58"          : np.uint8,      "a"    : np.float64,        "b"    : np.float64,        "d"    : np.float64,
-        "e"            : np.float64,    "f"    : np.float64,        "g"    : np.float64,        "h"    : np.str0,
-        "i"            : np.str0,       "j"    : np.str0,           "k"    : np.str0,           "l"    : np.str0, 
-        "n"            : np.uint32,     "o"    : np.str0,           "p"    : np.str0,           "q"    : np.str0,
+        "p58"          : np.uint8,      "a"    : np.double,         "b"    : np.double,         "d"    : np.double,
+        "e"            : np.double,     "f"    : np.double,         "g"    : np.double,         "h"    : np.unicode_,
+        "i"            : np.unicode_,   "j"    : np.unicode_,       "k"    : np.unicode_,       "l"    : np.unicode_, 
+        "n"            : np.uint32,     "o"    : np.unicode_,       "p"    : np.unicode_,       "q"    : np.unicode_,
                                                                                                 #lokalita nehody
-        "r"            : np.uint32,     "s"    : np.uint32,         "t"    : np.str0,           "p5a"  : np.uint8
+        "r"            : np.uint32,     "s"    : np.uint32,         "t"    : np.unicode_,        "p5a"  : np.uint8
     }
 
     regions = {
@@ -89,7 +87,7 @@ class DataDownloader:
             if node.get("onclick").endswith(".zip')") and node.get("onclick").startswith(f"download('{self.folder}/")
         ]
         # Cílová složka nemusí existovat, pokus o její vytvoření.
-        try: mkdir(self.folder)
+        try: makedirs(self.folder)
         except FileExistsError: pass
 
         # Seznam stažených souborů.
@@ -105,6 +103,8 @@ class DataDownloader:
 
 
     def _download_subroutine(self, file_url:str) -> None:
+        """Podprogram pro stažení souboru spouštěný paralelně."""
+
         # Získání cesty souboru smazáním url.
         file_path = file_url.replace(self.url, "")
         self.downloaded_zips.append(file_path)
@@ -122,12 +122,17 @@ class DataDownloader:
         self._print_message(f"Done downloading {file_url}...")
 
 
+    def _create_empty_data_dict(self) -> Dict[str, np.ndarray]:
+        """Vytvoření slovníku s hlavičkami a prázdnými numpy poli."""
+        return { header : np.empty(shape=0, dtype=self.header_types[header]) for header in self.headers }
+
+
     def parse_region_data(self, region:str) -> Dict[str, np.ndarray]:
         if not self.downloaded:
             self.download_data()
         
         region_csv_name = self.regions[region] + ".csv"
-        data = { header : np.empty(shape=(0), dtype=self.header_types[header]) for header in self.headers }
+        data = self._create_empty_data_dict()
 
         for zip_path in self.downloaded_zips:
             with zipfile.ZipFile(zip_path, "r") as zf:
@@ -135,47 +140,51 @@ class DataDownloader:
                     reader = csv.reader(codecs.iterdecode(csv_file, "cp1250"), delimiter=';', quotechar='"')
                     #Načíst jednotlivé řádky souboru
                     for row in reader:
-                        #Přeskočit prázdné a nevalidní řádky
-                        if any(self.header_types[header] is not np.str0 and row[i] in ("", "XX") for i, header in enumerate(self.headers)):
+                        #Přeskočit řádky s prázdnými a nevalidními položkami
+                        if any(self.header_types[header] is not np.unicode_ and row[i] in ("", "XX") for i, header in enumerate(self.headers)):
                             continue
 
-                        #Přidat řádek do data
                         for i, header in enumerate(self.headers):
-                            #Úprava dat pro float (',' na '.')
-                            if self.header_types[header] is np.float64:
-                                row[i] = row[i].replace(",", ".")
+                            #Úprava desetinné čárky na tečku
+                            if self.header_types[header] is np.double:
+                                row[i] = row[i].replace(',', '.')
 
-                            data[header] = np.append(data[header], row[i])
+                            data[header] = np.append(data[header], self.header_types[header](row[i]))
 
         data["region"] = np.full(data["p1"].size, region)
         return data
 
 
-    def get_dict(self, regions:Union[None, List[str]]) -> Dict[str, np.ndarray]:
+    def get_dict(self, regions:Union[None, List[str]]=None) -> Dict[str, np.ndarray]:
         if regions is None or len(regions) == 0:
             regions = list(self.regions.keys())
 
-        data = {}
+        data = self._create_empty_data_dict()
+        data["region"] = np.empty(shape=0, dtype=np.unicode_)
+
         for region in regions:
             self._print_message(f"Parsing data for {region} region...")
 
+            #Extrahovaná data pro daný kraj nejsou v paměti, načíst z cache.
             if self.extracted_data[region] is None:
                 filename = self.cache_file.format(region)
                 self.extracted_data[region] = self._load_cache(filename)
 
+                #Cache neexistuje, načíst metodou parse_region_data a uložit cache.
                 if self.extracted_data[region] is None:
                     self.extracted_data[region] = self.parse_region_data(region)
                     self._save_cache(filename, self.extracted_data[region])
-                        
+
             for header in self.extracted_data[region].keys():
-                data[header] = np.concatenate((data.get(header, []), self.extracted_data[region][header]))
+                data[header] = np.concatenate((data[header], self.extracted_data[region][header]))
 
             self._print_message(f"Done parsing data for {region} region...")
         return data
 
-    
+
     @staticmethod
     def _load_cache(filename:str) -> Union[Dict[str, np.ndarray], None]:
+        """Načtení dat z cache souboru, pokud existuje, jinak None."""
         if not exists(filename):
             return None
 
@@ -185,13 +194,15 @@ class DataDownloader:
 
     @staticmethod
     def _save_cache(filename:str, data:Dict[str, np.ndarray]) -> None:
+        """Uložení dat do cache souboru."""
         with gzip.open(filename, "wb") as file:
             pickle.dump(data, file)
 
-    
+
     @staticmethod
     def _print_message(message:str) -> None:
-        if __name__ == "__main__" or __name__ == "__mp_main__":
+        """Výpis zprávy na standardní výstup, pokud je download.py spuštěn jako hlavní skript."""
+        if __name__ in ("__main__", "__mp_main__"):
             print(message)
 
 
@@ -200,7 +211,7 @@ def main() -> None:
     downloader = DataDownloader()
     data = downloader.get_dict(regions=["JHC", "JHM", "VYS"])
 
-    #print information about data
+    #Vypsat informace o zpracovaných krajích
     print("Data processed in {:.2f} seconds.".format(time.time() - start))
     print("Data contains {} rows.".format(data["region"].size))
     print("Data contains {} columns.".format(len(data)))
