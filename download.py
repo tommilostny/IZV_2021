@@ -87,8 +87,7 @@ class DataDownloader:
             if node.get("onclick").endswith(".zip')") and node.get("onclick").startswith(f"download('{self.folder}/")
         ]
         # Cílová složka nemusí existovat, pokus o její vytvoření.
-        try: makedirs(self.folder)
-        except FileExistsError: pass
+        makedirs(self.folder, exist_ok=True)
 
         # Seznam stažených souborů.
         manager = Manager()
