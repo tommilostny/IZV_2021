@@ -34,7 +34,7 @@ class DataDownloader:
 
     header_types = {
         #identifikační číslo            #druh pozemní komunikace    #číslo pozemní komunikace   #den, měsíc, rok
-        "p1"           : np.uint64,     "p36"  : np.uint8,          "p37"  : np.float64,        "p2a"  : np.str0,
+        "p1"           : np.uint64,     "p36"  : np.uint8,          "p37"  : np.uint32,         "p2a"  : np.str0,
         #den v týdnu                    #čas                        #druh nehody                #druh srážky jedoucích vozidel
         "weekday(p2a)" : np.uint8,      "p2b"  : np.uint16,         "p6"   : np.uint8,          "p7"   : np.uint8,
         #druh pevné překážky            #charakter nehody           #zavinění nehody            #alkohol u viníka nehody přítomen
@@ -48,7 +48,7 @@ class DataDownloader:
         #situování nehody               #řízení provozu             #místní úprava přednosti    #specifická místa a objekty v místě nehody
         "p22"          : np.uint8,      "p23"  : np.uint8,          "p24"  : np.uint8,          "p27"  : np.uint8,
         #směrové poměry                 #počet zúčastněných vozidel #místo dopravní nehody      #druh křižující komunikace
-        "p28"          : np.uint8,      "p34"  : np.uint8,          "p35"  : np.uint8,          "p39"  : np.float64,
+        "p28"          : np.uint8,      "p34"  : np.uint8,          "p35"  : np.uint8,          "p39"  : np.uint8,
         #druh vozidla                   #výrobní značka             #výrobní rok                #charakteristika vozidla
         "p44"          : np.uint8,      "p45a" : np.uint16,         "p47"  : np.uint8,          "p48a" : np.uint8, 
         #smyk                           #vozidlo po nehodě          #únik hmot                  #způsob vyproštění osob z vozidla
@@ -71,29 +71,16 @@ class DataDownloader:
         "LBK": "18", "KVK": "19",
     }
 
-    @staticmethod
-    def _load_cache(filename:str) -> Union[Dict[str, np.ndarray], None]:
-        if not exists(filename):
-            return None
-
-        with gzip.open(filename, "rb") as file:
-            return pickle.load(file)
-
-
-    @staticmethod
-    def _save_cache(filename:str, cache:Dict[str, np.ndarray]) -> None:
-        with gzip.open(filename, "wb") as file:
-            pickle.dump(cache, file)
-
 
     def __init__(self, url:str="https://ehw.fit.vutbr.cz/izv/", folder:str="data", cache_filename:str="data_{}.pkl.gz"):
         self.url = url
         self.folder = folder
+        self.downloaded = False
         self.extracted_data = { region : None for region in self.regions.keys() }
-        self.cache_filename = cache_filename
+        self.cache_file = f"{folder}/{cache_filename}"
 
 
-    def download_data(self):
+    def download_data(self) -> None:
         # Parsování HTML stránky a načtení seznamu souborů ke stažení.
         page = requests.get(self.url).text
         soup = BeautifulSoup(page, 'html.parser')
@@ -111,12 +98,13 @@ class DataDownloader:
 
         # Paralelní stažení všech sourobů.
         pool = Pool(cpu_count())
-        pool.map(self._download_file, file_urls)
+        pool.map(self._download_subroutine, file_urls)
         pool.close()
         pool.join()
+        self.downloaded = True
 
 
-    def _download_file(self, file_url:str):
+    def _download_subroutine(self, file_url:str) -> None:
         # Získání cesty souboru smazáním url.
         file_path = file_url.replace(self.url, "")
         self.downloaded_zips.append(file_path)
@@ -126,18 +114,20 @@ class DataDownloader:
             return
 
         # Proces stažení souboru.
-        print(f"Downloading {file_url}...")
+        self._print_message(f"Downloading {file_url}...")
         with open(file_path, "wb") as file:
             with requests.get(file_url, stream=True) as data:
                 for chunk in data:
                     file.write(chunk)
-        print(f"Done downloading {file_url}...")
+        self._print_message(f"Done downloading {file_url}...")
 
 
     def parse_region_data(self, region:str) -> Dict[str, np.ndarray]:
-        self.download_data()
+        if not self.downloaded:
+            self.download_data()
+        
         region_csv_name = self.regions[region] + ".csv"
-        data = { header : [] for header in self.headers }
+        data = { header : np.empty(shape=(0), dtype=self.header_types[header]) for header in self.headers }
 
         for zip_path in self.downloaded_zips:
             with zipfile.ZipFile(zip_path, "r") as zf:
@@ -145,61 +135,77 @@ class DataDownloader:
                     reader = csv.reader(codecs.iterdecode(csv_file, "cp1250"), delimiter=';', quotechar='"')
                     #Načíst jednotlivé řádky souboru
                     for row in reader:
-                        row = dict(zip(self.headers, row))
-                        skip_row = False
-                        #Přeskočit nevalidní řádky
-                        for header in self.headers:
-                            if row[header] in ["", "XX"]:
-                                #Pro float přiřadit NaN
-                                if self.header_types[header] is np.float64:
-                                    row[header] = np.nan
-                                #Pro ostatní typy přeskočit
-                                elif self.header_types[header] is not np.str0:
-                                    skip_row = True
-                                    break
-                        if skip_row:
+                        #Přeskočit prázdné a nevalidní řádky
+                        if any(self.header_types[header] is not np.str0 and row[i] in ("", "XX") for i, header in enumerate(self.headers)):
                             continue
-                        #Přidat řádek do data
-                        for header in self.headers:
-                            #Úprava dat pro float (',' na '.')
-                            if self.header_types[header] is np.float64 and row[header] is not np.nan:
-                                row[header] = row[header].replace(",", ".")
-                            data[header].append(row[header])
-        #Konverze seznamů s daty na numpy array
-        for header in self.headers:
-            data[header] = np.array(data[header], dtype=self.header_types[header])
 
-        data["region"] = np.array([region for _ in range(data["a"].shape[0])], dtype=np.str0)
+                        #Přidat řádek do data
+                        for i, header in enumerate(self.headers):
+                            #Úprava dat pro float (',' na '.')
+                            if self.header_types[header] is np.float64:
+                                row[i] = row[i].replace(",", ".")
+
+                            data[header] = np.append(data[header], row[i])
+
+        data["region"] = np.full(data["p1"].size, region)
         return data
 
 
-    def get_dict(self, regions=Union[None, List[str]]) -> Dict[str, np.ndarray]:
+    def get_dict(self, regions:Union[None, List[str]]) -> Dict[str, np.ndarray]:
         if regions is None or len(regions) == 0:
             regions = list(self.regions.keys())
 
         data = {}
         for region in regions:
+            self._print_message(f"Parsing data for {region} region...")
+
             if self.extracted_data[region] is None:
-                filename = self.cache_filename.format(region)
+                filename = self.cache_file.format(region)
                 self.extracted_data[region] = self._load_cache(filename)
 
                 if self.extracted_data[region] is None:
                     self.extracted_data[region] = self.parse_region_data(region)
                     self._save_cache(filename, self.extracted_data[region])
-            
-            region_data = self.extracted_data[region]
-            
-            for header in region_data.keys():
-                data[header] = np.concatenate((data.get(header, []), region_data[header]))
+                        
+            for header in self.extracted_data[region].keys():
+                data[header] = np.concatenate((data.get(header, []), self.extracted_data[region][header]))
+
+            self._print_message(f"Done parsing data for {region} region...")
         return data
 
+    
+    @staticmethod
+    def _load_cache(filename:str) -> Union[Dict[str, np.ndarray], None]:
+        if not exists(filename):
+            return None
 
-def main():
+        with gzip.open(filename, "rb") as file:
+            return pickle.load(file)
+
+
+    @staticmethod
+    def _save_cache(filename:str, data:Dict[str, np.ndarray]) -> None:
+        with gzip.open(filename, "wb") as file:
+            pickle.dump(data, file)
+
+    
+    @staticmethod
+    def _print_message(message:str) -> None:
+        if __name__ == "__main__" or __name__ == "__mp_main__":
+            print(message)
+
+
+def main() -> None:
     start = time.time()
     downloader = DataDownloader()
     data = downloader.get_dict(regions=["JHC", "JHM", "VYS"])
-    print(data)
-    print("--- %s seconds ---" % (time.time() - start))
+
+    #print information about data
+    print("Data processed in {:.2f} seconds.".format(time.time() - start))
+    print("Data contains {} rows.".format(data["region"].size))
+    print("Data contains {} columns.".format(len(data)))
+    print("Regions:", np.unique(data["region"]))
+
 
 # TODO vypsat zakladni informace pri spusteni python3 download.py (ne pri importu modulu)
 if __name__ == "__main__":
