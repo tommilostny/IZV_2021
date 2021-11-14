@@ -59,7 +59,7 @@ class DataDownloader:
         "i"            : np.unicode_,   "j"    : np.unicode_,       "k"    : np.unicode_,       "l"    : np.unicode_, 
         "n"            : np.uint32,     "o"    : np.unicode_,       "p"    : np.unicode_,       "q"    : np.unicode_,
                                                                                                 #lokalita nehody
-        "r"            : np.uint32,     "s"    : np.uint32,         "t"    : np.unicode_,        "p5a"  : np.uint8
+        "r"            : np.uint32,     "s"    : np.uint32,         "t"    : np.unicode_,       "p5a"  : np.uint8
     }
 
     regions = {
@@ -68,7 +68,6 @@ class DataDownloader:
         "OLK": "14", "ZLK": "15", "VYS": "16", "PAK": "17",
         "LBK": "18", "KVK": "19",
     }
-
 
     def __init__(self, url:str="https://ehw.fit.vutbr.cz/izv/", folder:str="data", cache_filename:str="data_{}.pkl.gz"):
         self.url = url
@@ -135,16 +134,21 @@ class DataDownloader:
 
         for zip_path in self.downloaded_zips:
             with zipfile.ZipFile(zip_path, "r") as zf:
-                with zf.open(region_csv_name, "r") as csv_file: #V každém zip souboru, otevřít csv soubor daného kraje
+                #V každém zip souboru, otevřít csv soubor daného kraje.
+                with zf.open(region_csv_name, "r") as csv_file:
                     reader = csv.reader(codecs.iterdecode(csv_file, "cp1250"), delimiter=';', quotechar='"')
-                    #Načíst jednotlivé řádky souboru
+                    #Načíst jednotlivé řádky souboru.
                     for row in reader:
-                        #Přeskočit řádky s prázdnými a nevalidními položkami
+                        #Přeskočit řádky s prázdnými a nevalidními položkami.
                         if any(self.header_types[header] is not np.unicode_ and row[i] in ("", "XX") for i, header in enumerate(self.headers)):
                             continue
 
+                        #Přeskočit duplicitní řádky.
+                        if self.header_types["p1"](row[0]) in data["p1"]:
+                            continue
+
                         for i, header in enumerate(self.headers):
-                            #Úprava desetinné čárky na tečku
+                            #Úprava desetinné čárky na tečku.
                             if self.header_types[header] is np.double:
                                 row[i] = row[i].replace(',', '.')
 
@@ -210,7 +214,7 @@ def main() -> None:
     downloader = DataDownloader()
     data = downloader.get_dict(regions=["JHC", "JHM", "VYS"])
 
-    #Vypsat informace o zpracovaných krajích
+    #Vypsat informace o zpracovaných krajích.
     print("Data processed in {:.2f} seconds.".format(time.time() - start))
     print("Data contains {} rows.".format(data["region"].size))
     print("Data contains {} columns.".format(len(data)))
