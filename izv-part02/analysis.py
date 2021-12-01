@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.9
 # coding=utf-8
 # %%
+from typing import List
 from matplotlib import pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -34,7 +35,7 @@ def get_dataframe(filename: str, verbose: bool = False) -> pd.DataFrame:
     
     # Convert each col in df to categorical
     for col in df.columns:
-        if col not in ["region", "p21", "date"]:
+        if col not in ["region", "p21", "date", "p10"]:
             df[col] = df[col].astype("category")      
     if verbose:
         print(f"new_size={df.memory_usage(deep=True, index=True).sum() / 1_048_576:.1f} MB")
@@ -42,54 +43,112 @@ def get_dataframe(filename: str, verbose: bool = False) -> pd.DataFrame:
     return df
 
 # %%
+SELECTED_REGIONS = ("MSK", "JHM", "KVK", "JHC")
+
+def copy_selected_regions(df: pd.DataFrame, columns: List[str]):
+    # Return a copy columns of df from 4 selected regions 
+    return df[columns][df["region"].isin(SELECTED_REGIONS)].copy()
+
+# %%
 # Ukol 2: počty nehod v jednotlivých regionech podle druhu silnic
 
-ROADTYPE_LABELS = {
-    1: "Dvoupruhová komunikace",
-    2: "Třípruhová komunikace",
-    3: "Čtyřpruhová komunikace",
-    4: "Čtyřpruhová komunikace",
-    5: "Vícepruhová komunikace",
-    6: "Rychlostní komunikace",
-    0: "Jiná komunikace",
-}
+def map_roadtype(p21_value: int) -> str:
+    if p21_value == 1:
+        return "Dvoupruhová komunikace"
+    elif p21_value == 2:
+        return "Třípruhová komunikace"
+    elif p21_value == 3 or p21_value == 4:
+        return "Čtyřpruhová komunikace"
+    elif p21_value == 5:\
+        return "Vícepruhová komunikace"
+    elif p21_value == 6:
+        return "Rychlostní komunikace"
+    else:
+        return "Jiná komunikace"
 
 def plot_roadtype(df: pd.DataFrame, fig_location: str = None,
                   show_figure: bool = False):
-    # Copy selected 4 regions and p21 columns from df into new df_roadtype 
-    df_roadtype = df[["region", "p21"]][df["region"].isin(["MSK", "JHM", "KVK", "JHC"])].copy()
+    # Create a copy of df with only selected columns
+    df_roadtype = copy_selected_regions(df, columns=["region", "p21"])
 
-    # Add roadtype_label column to match column p21
-    df_roadtype["roadtype_label"] = df_roadtype["p21"].map(ROADTYPE_LABELS)
+    # Modify p21 column to map labels
+    df_roadtype["p21"] = df_roadtype["p21"].map(map_roadtype)
 
-    # Create 3*2 subplots
+    # Create subplots for 6 road types
     fig, axes = plt.subplots(3, 2, figsize=(10, 10))
     fig.suptitle("Druhy silnic", fontsize=18)
     fig.set_facecolor("#fefefe")
     axes = axes.flatten()
 
-    # For each roadtype_label, plot regions using seaborn
-    for index, (roadtype_label, group) in enumerate(df_roadtype.groupby("roadtype_label")):        
+    # For each road type, plot count of accidents in regions using seaborn
+    for index, (road_type, group) in enumerate(df_roadtype.groupby("p21")):        
         ax = axes[index]
         sns.countplot(x="region", data=group, ax=ax, hue="region")
 
-        ax.set_title(roadtype_label)
+        ax.set_title(road_type)
         ax.set_ylabel("Počet nehod")
         ax.set_xlabel("Kraj")
         ax.legend().set_visible(False)
         ax.set_facecolor("#f0f0f0")
 
+    # Display and save figure
     fig.tight_layout()
     if show_figure:
         fig.show()
     if fig_location:
         fig.savefig(fig_location)
 
+
 # %%
 # Ukol3: zavinění zvěří
+
+def map_animal(p10_value: int) -> str:
+    if p10_value == 1 or p10_value == 2:
+        return "řidičem"
+    elif p10_value == 4:
+        return "zvěří"
+    else:
+        return "jiné"
+
 def plot_animals(df: pd.DataFrame, fig_location: str = None,
                  show_figure: bool = False):
-    pass
+    # Create a copy of df with only selected columns
+    df_animals = copy_selected_regions(df, columns=["region", "date", "p10"])
+
+    # Remove rows with date year == 2021
+    df_animals = df_animals[df_animals["date"].dt.year != 2021]
+
+    # Modify p10 column to map labels and date to months
+    df_animals["p10"] = df_animals["p10"].map(map_animal)
+    df_animals["date"] = df_animals["date"].dt.month
+
+    # Sort by p10
+    df_animals.sort_values(by=["p10", "region"], inplace=True, ascending=False)
+
+    # Create subplots for 4 regions
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    fig.set_facecolor("#fefefe")
+    axes = axes.flatten()
+
+    # For each region, plot animal type in accident by month using seaborn
+    for index, (region, group) in enumerate(df_animals.groupby("region")):
+        ax = axes[index]
+        sns.countplot(x="date", data=group, ax=ax, hue="p10")
+
+        ax.set_title(f"Kraj: {region}")
+        ax.set_ylabel("Počet nehod")
+        ax.set_xlabel("Měsíc")
+        ax.legend().set_visible(False)
+
+    # Display and save figure
+    axes[0].legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0)
+    fig.tight_layout()
+    if show_figure:
+        fig.show()
+    if fig_location:
+        fig.savefig(fig_location)
+
+
 
 # %%
 # Ukol 4: Povětrnostní podmínky
