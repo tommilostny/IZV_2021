@@ -142,3 +142,4 @@ data/
 test.ipynb
 *.pkl.gz
 *.png
+examples/

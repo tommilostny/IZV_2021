@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.cluster import AgglomerativeClustering
 
-# muzete pridat vlastni knihovny
-
+# Vybraný kraj (Vysočina)
 REGION = "VYS"
 
 # %%
@@ -18,9 +17,9 @@ def make_geo(df: pd.DataFrame) -> gpd.GeoDataFrame:
     """ Konvertovani dataframe do GeoDataFrame se spravnym kodovanim. """
 
     # Smazání řádků, které neobsahují souřadnice
-    df = df.dropna(subset=['d', 'e']).copy()
+    df = df.dropna(subset=["d", "e"]).copy()
 
-    # Konverze na geopandas.GeoDataFrame s CRS pro GPS (EPSG:3857)
+    # Konverze na geopandas.GeoDataFrame s CRS pro S-JTSK (EPSG:5514)
     return gpd.GeoDataFrame(df,
                             geometry=gpd.points_from_xy(x=df["d"], y=df["e"]),
                             crs="epsg:5514")
@@ -31,7 +30,7 @@ def make_geo(df: pd.DataFrame) -> gpd.GeoDataFrame:
 def _rt_name(road_type: int) -> str:
     """ Vrátí název typu silnice podle čísla
     (pouze pro funkci plot_geo: 0 => dálnice a 1 => silnice 1. třídy). """
-    return 'dálnice' if road_type == 0 else 'silnice 1. třídy'
+    return "dálnice" if road_type == 0 else "silnice 1. třídy"
 
 
 def plot_geo(gdf: gpd.GeoDataFrame, fig_location: str = None,
@@ -63,7 +62,7 @@ def plot_geo(gdf: gpd.GeoDataFrame, fig_location: str = None,
             ax = axes[row, col]
 
             ax.set_title(f"{REGION} kraj: {_rt_name(road_type)} ({year})")
-            ax.set_aspect('equal')
+            ax.set_aspect("equal")
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
 
@@ -73,10 +72,10 @@ def plot_geo(gdf: gpd.GeoDataFrame, fig_location: str = None,
                         gdf["geometry"].total_bounds[3])
 
             # Zobrazení bodů
-            subgroup.plot(ax=ax, color='red', markersize=1)
+            subgroup.plot(ax=ax, color="red", markersize=1)
 
             # Zobrazení podkladové mapy
-            ctx.add_basemap(ax, crs=gdf.crs.to_string(),
+            ctx.add_basemap(ax, crs=subgroup.crs.to_string(),
                             source=ctx.providers.Stamen.TonerLite)
 
     # Zobrazení a uložení grafu
@@ -100,7 +99,7 @@ def plot_cluster(gdf: gpd.GeoDataFrame, fig_location: str = None,
     gdf = gdf[gdf["p36"] == 1]
 
     # Zvolen Agglomerative clustering ve variantě Complete-linkage.
-    # Lepší výsledky než zvažované metody (K-means, Ward, Single-linkage).
+    # Lepší výsledky než jiné zvažované metody (K-means, Ward, Single-linkage).
     model = AgglomerativeClustering(n_clusters=69, linkage="complete")
     model.fit(gdf[["d", "e"]])
 
@@ -124,7 +123,7 @@ def plot_cluster(gdf: gpd.GeoDataFrame, fig_location: str = None,
     gdf.plot(ax=ax, markersize=2, column="cluster_cnt", legend=True)
 
     # Zobrazení podkladové mapy
-    ctx.add_basemap(ax, crs=gdf.crs.to_string(),
+    ctx.add_basemap(ax=ax, crs=gdf.crs.to_string(),
                     source=ctx.providers.Stamen.TonerLite)
 
     # Zobrazení a uložení grafu
